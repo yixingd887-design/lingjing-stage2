@@ -74,20 +74,25 @@ images/bus.jpg
 ```text
 lingjing-stage2
 │
-├── src
-│   ├── main.py
-│   ├── yolo_detect.py
-│   └── vision_api.py
+├── src                 # 核心代码
+│   ├── main.py         # 主程序入口
+│   ├── yolo_detect.py  # YOLO检测模块
+│   └── vision_api.py   # 视觉大模型接口
 │
-├── images
+├── images              # 测试图片
 │
-├── models
+├── models              # AI模型文件
+│   └── yolo11n.pt
 │
-├── results
+├── results             # 检测结果
 │
-├── requirements.txt
+├── docs                # 项目文档
 │
-└── README.md
+├── requirements.txt    # 环境依赖
+│
+├── .gitignore          # Git忽略配置
+│
+└── README.md           # 项目说明
 ```
 
 ## 环境配置
