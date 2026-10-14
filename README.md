@@ -70,7 +70,10 @@ images/bus.jpg
 ---
 
 ## 项目结构
+
+```text
 lingjing-stage2
+│
 ├── src
 │   ├── main.py
 │   ├── yolo_detect.py
@@ -83,7 +86,9 @@ lingjing-stage2
 ├── results
 │
 ├── requirements.txt
+│
 └── README.md
+```
 
 ## 环境配置
 创建虚拟环境：
