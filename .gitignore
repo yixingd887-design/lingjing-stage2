@@ -14,3 +14,8 @@ results/
 # 临时文件
 *.log
 tree.txt
+
+# Stage 3 Web application runtime files
+web_app/uploads/
+web_app/results/
+web_app/__pycache__/
