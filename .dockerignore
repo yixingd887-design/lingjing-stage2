@@ -1,0 +1,8 @@
+﻿.venv/
+.git/
+.env
+__pycache__/
+**/__pycache__/
+web_app/uploads/
+web_app/results/
+*.pyc

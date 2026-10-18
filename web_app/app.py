@@ -4,7 +4,10 @@ from pathlib import Path
 import requests
 import streamlit as st
 
-API_URL = "http://127.0.0.1:8000/analyze"
+import os
+
+API_BASE_URL = os.getenv("API_URL", "http://127.0.0.1:8000").rstrip("/")
+API_URL = API_BASE_URL + "/analyze"
 PROJECT_DIR = Path(__file__).resolve().parent.parent
 
 st.set_page_config(
@@ -53,10 +56,7 @@ if uploaded_file is not None:
                 with left:
                     st.subheader("YOLO 目标检测")
 
-                    result_url = (
-                        "http://127.0.0.1:8000"
-                        + data["yolo_image_url"]
-                    )
+                    result_url = API_BASE_URL + data["yolo_image_url"]
 
                     st.image(
                         result_url,
