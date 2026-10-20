@@ -134,3 +134,58 @@ python src/main.py
 YOLO负责快速目标检测与定位；
 视觉大模型负责复杂场景理解。
 二者结合，实现从目标检测到语义理解的完整视觉分析流程
+
+## Docker 部署
+
+### 1. 环境准备
+
+安装并启动 Docker Desktop，确保 Docker 服务正常运行。
+
+在项目根目录创建 `.env` 文件，填写自己的 DashScope API Key：
+
+```env
+DASHSCOPE_API_KEY=your_api_key_here
+```
+
+请将示例值替换为自己的有效 API Key。不要将真实密钥提交到 GitHub。
+
+### 2. 启动服务
+
+在项目根目录执行：
+
+```bash
+docker compose up -d --build
+```
+
+查看容器运行状态：
+
+```bash
+docker compose ps
+```
+
+查看运行日志：
+
+```bash
+docker compose logs --tail=50
+```
+
+### 3. 访问服务
+
+- 前端界面：http://localhost:8501
+- 后端接口：http://localhost:8000/
+- API 文档：http://localhost:8000/docs
+
+### 4. 功能验证
+
+1. 打开前端界面并上传一张图片。
+2. 检查 YOLO 目标检测结果。
+3. 检查视觉大模型分析结果。
+4. 检查前后端日志是否存在错误。
+
+### 5. 停止服务
+
+```bash
+docker compose down
+```
+
+说明：Docker 镜像使用 CPU 版 PyTorch，容器内推理默认使用 CPU。Windows 本地运行方式仍可使用原有 GPU 环境。
