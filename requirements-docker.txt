@@ -1,8 +1,9 @@
-﻿fastapi==0.143.3
+fastapi==0.143.3
 uvicorn==0.54.0
 streamlit==1.66.0
 python-multipart==0.0.32
 requests==2.34.2
 python-dotenv==1.2.4
 openai==3.31.0
+opencv-python==4.11.0.86
 ultralytics==8.4.177

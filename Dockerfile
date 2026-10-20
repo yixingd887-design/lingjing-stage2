@@ -1,19 +1,19 @@
-﻿
 FROM python:3.11-slim
-
+RUN apt-get update && apt-get install -y --no-install-recommends libgl1 libglib2.0-0 \
+    && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 
 ENV PYTHONUNBUFFERED=1
 ENV PIP_NO_CACHE_DIR=1
 
+# 先安装 CPU 版 PyTorch，避免下载 CUDA 依赖
+RUN pip install --upgrade pip && \
+    pip install torch torchvision \
+    --index-url https://download.pytorch.org/whl/cpu
+
 COPY requirements-docker.txt .
 
-RUN pip install --upgrade pip && \
-    pip install -r requirements-docker.txt
-
-# 安装 Linux CPU 版 PyTorch，供 YOLO 使用
-RUN pip install torch torchvision \
-    --index-url https://download.pytorch.org/whl/cpu
+RUN pip install -r requirements-docker.txt
 
 COPY src/ ./src/
 COPY web_app/ ./web_app/
