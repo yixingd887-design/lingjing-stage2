@@ -2,14 +2,17 @@
 
 ## 项目简介
 
-本项目实现了一个结合传统计算机视觉模型与视觉大语言模型的智能图片分析系统。
+本项目实现了一个结合目标检测、图像目标分割与视觉大语言模型的智能图片分析系统。
 
-系统融合 YOLO 目标检测模型和视觉大模型 API，可以分别完成：
+系统集成以下三种 AI 分析功能：
 
-1. 图片目标检测
-2. 图片语义理解与场景分析
+1. **YOLO 目标检测**：识别图片中的目标，输出目标类别、置信度，并生成检测结果图片。
+2. **SAM 目标分割**：利用 YOLO 检测得到的目标边界框作为提示信息，引导 SAM 对目标进行分割，并生成分割结果图片。
+3. **视觉大模型分析**：调用视觉大模型 API，对图片进行语义理解、场景描述和环境分析。
 
-项目基于 Python、PyTorch 和 CUDA GPU 开发。
+项目采用 Python、PyTorch、Ultralytics、FastAPI 和 Streamlit 等技术，实现从图片上传、模型推理到结果可视化展示的完整流程，并支持通过 Docker Compose 部署。
+
+说明：当前 SAM 分割采用 YOLO 检测框作为提示，并非自动分割图片中的所有物体。
 
 
 ---
@@ -44,7 +47,28 @@ images/bus.jpg
 并生成检测结果图片。
 ---
 
-### 2. 视觉大模型分析
+---
+
+### 2. SAM 目标分割
+
+使用 Segment Anything Model（SAM）进行图像目标分割。
+
+功能：
+
+- 接收 YOLO 检测得到的目标边界框。
+- 根据目标框引导 SAM 生成目标分割结果。
+- 保存并展示分割结果图片。
+- 当 YOLO 未检测到目标时，当前实现返回原始图片，不执行基于检测框的分割。
+
+模型权重文件：
+
+`models/sam_b.pt`
+
+---
+
+
+
+### 3. 视觉大模型分析
 
 调用视觉大模型 API，对图片进行多模态理解。
 
@@ -63,37 +87,44 @@ images/bus.jpg
 - Python 3.11
 - PyTorch
 - TorchVision
-- YOLO
-- OpenAI SDK
-- CUDA
+- Ultralytics YOLO / SAM
+- FastAPI
+- Streamlit
+- OpenAI SDK（用于视觉大模型接口调用，具体以实际代码为准）
 - OpenCV
+- Docker Compose
+
 ---
 
 ## 项目结构
 
 ```text
-lingjing-stage2
-│
-├── src                 # 核心代码
-│   ├── main.py         # 主程序入口
-│   ├── yolo_detect.py  # YOLO检测模块
-│   └── vision_api.py   # 视觉大模型接口
-│
-├── images              # 测试图片
-│
-├── models              # AI模型文件
-│   └── yolo11n.pt
-│
-├── results             # 检测结果
-│
-├── docs                # 项目文档
-│
-├── requirements.txt    # 环境依赖
-│
-├── .gitignore          # Git忽略配置
-│
-└── README.md           # 项目说明
+lingjing-stage2/
+├── src/
+│   ├── main.py
+│   ├── yolo_detect.py
+│   └── vision_api.py
+├── web_app/
+│   ├── api.py
+│   ├── app.py
+│   ├── uploads/
+│   └── results/
+├── images/
+├── models/
+│   ├── yolo11n.pt
+│   └── sam_b.pt
+├── results/
+├── docs/
+├── requirements.txt
+├── requirements-docker.txt
+├── Dockerfile
+├── docker-compose.yml
+├── .dockerignore
+├── .gitignore
+└── README.md
 ```
+
+说明：以上为主要文件和目录，实际结构以项目仓库为准。
 
 ## 环境配置
 创建虚拟环境：
@@ -129,11 +160,17 @@ python src/main.py
 - NVIDIA GeForce RTX 5060 Laptop GPU
 - CUDA
 
+
 ## 项目特点
-本项目采用“双视觉系统”设计：
-YOLO负责快速目标检测与定位；
-视觉大模型负责复杂场景理解。
-二者结合，实现从目标检测到语义理解的完整视觉分析流程
+
+本项目采用多模型协同分析的设计思路：
+
+- **目标检测**：利用 YOLO 识别图片中的目标，并输出类别、置信度和检测结果图片。
+- **目标分割**：利用 YOLO 检测框引导 SAM 对目标进行分割，生成分割结果图片。
+- **语义理解**：调用视觉大模型 API，生成图片内容描述和场景分析。
+
+系统通过 FastAPI 提供后端分析接口，并使用 Streamlit 构建网页，实现图片上传、模型调用和多种分析结果的可视化展示。同时支持通过 Docker Compose 部署，便于环境配置和演示。
+
 
 ## Docker 部署
 
@@ -147,7 +184,15 @@ YOLO负责快速目标检测与定位；
 DASHSCOPE_API_KEY=your_api_key_here
 ```
 
-请将示例值替换为自己的有效 API Key。不要将真实密钥提交到 GitHub。
+### SAM 模型文件准备
+
+项目使用的 SAM 权重文件为 `models/sam_b.pt`。首次部署前，请确保该文件已放置在项目的 `models/` 目录中。
+
+由于模型文件体积较大，如果仓库未包含该文件，需要按照项目使用的 Ultralytics SAM 模型权重获取方式单独下载。
+
+Docker 构建时会将 `models/` 目录复制到镜像中，因此新增或更新模型文件后，需要重新构建对应镜像。
+
+
 
 ### 2. 启动服务
 
@@ -177,10 +222,20 @@ docker compose logs --tail=50
 
 ### 4. 功能验证
 
-1. 打开前端界面并上传一张图片。
-2. 检查 YOLO 目标检测结果。
-3. 检查视觉大模型分析结果。
-4. 检查前后端日志是否存在错误。
+1. 打开前端界面：http://localhost:8501。
+2. 上传一张 JPG、PNG 或 WebP 格式的图片。
+3. 点击「开始 AI 分析」。
+4. 检查 YOLO 目标检测结果、目标类别和置信度。
+5. 检查 SAM 目标分割结果图片。
+6. 检查视觉大模型生成的图片描述和场景分析。
+7. 如果图片未能正常显示或分析失败，查看前后端日志：
+
+```bash
+docker compose logs --tail=100 api
+docker compose logs --tail=100 frontend
+```
+
+8. 确认三个功能均能正常运行后，完成部署验证。
 
 ### 5. 停止服务
 

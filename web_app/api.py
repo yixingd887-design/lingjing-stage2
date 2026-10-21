@@ -22,6 +22,11 @@ sys.path.insert(0, str(SRC_DIR))
 
 from yolo_detect import model, DEVICE
 from vision_api import analyze_image
+from ultralytics import SAM
+
+SAM_MODEL_PATH = PROJECT_DIR / "models" / "sam_b.pt"
+
+sam_model = SAM(str(SAM_MODEL_PATH))
 
 app = FastAPI(title="灵境 AI 图像分析系统")
 
@@ -62,36 +67,68 @@ async def analyze(file: UploadFile = File(...)):
 
         image_path.write_bytes(content)
 
+       
         # YOLO 检测
         def run_yolo():
             results = model(str(image_path), device=DEVICE, verbose=False)
             detections = []
+            boxes_xyxy = []
+            output_path = RESULT_DIR / f"{image_path.stem}_yolo.jpg"
 
             for result in results:
                 for box in result.boxes:
                     cls_id = int(box.cls[0])
                     confidence = float(box.conf[0])
+
                     detections.append({
                         "name": model.names[cls_id],
                         "confidence": round(confidence, 4)
                     })
 
-                output_path = RESULT_DIR / f"{image_path.stem}_yolo.jpg"
+                    boxes_xyxy.append(box.xyxy[0].tolist())
+
                 result.save(filename=str(output_path))
 
-            return detections, output_path
+            return detections, boxes_xyxy, output_path
 
-        detections, output_path = await run_in_threadpool(run_yolo)
+        detections, boxes_xyxy, output_path = await run_in_threadpool(run_yolo)
+
+
+
+        # SAM 目标分割
+        def run_sam():
+            sam_output_path = RESULT_DIR / f"{image_path.stem}_sam.jpg"
+
+            if not boxes_xyxy:
+                shutil.copyfile(image_path, sam_output_path)
+                return sam_output_path
+
+            results = sam_model(
+                str(image_path),
+                bboxes=boxes_xyxy,
+                device=DEVICE,
+                verbose=False
+            )
+
+            result = results[0]
+            result.save(filename=str(sam_output_path))
+
+            return sam_output_path
+
+        sam_output_path = await run_in_threadpool(run_sam)
 
         # 多模态大模型分析
         description = await run_in_threadpool(analyze_image, str(image_path))
 
+        
         return {
             "filename": file.filename,
             "detections": detections,
             "description": description,
-            "yolo_image_url": f"/result/{output_path.name}"
+            "yolo_image_url": f"/result/{output_path.name}",
+            "sam_image_url": f"/result/{sam_output_path.name}"
         }
+
 
     except HTTPException:
         raise

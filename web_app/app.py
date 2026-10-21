@@ -7,6 +7,7 @@ import streamlit as st
 import os
 
 API_BASE_URL = os.getenv("API_URL", "http://127.0.0.1:8000").rstrip("/")
+IMAGE_BASE_URL = "http://localhost:8000"
 API_URL = API_BASE_URL + "/analyze"
 PROJECT_DIR = Path(__file__).resolve().parent.parent
 
@@ -51,12 +52,14 @@ if uploaded_file is not None:
                 response.raise_for_status()
                 data = response.json()
 
-                left, right = st.columns(2)
+                
+                col1, col2, col3 = st.columns(3)
 
-                with left:
+                with col1:
                     st.subheader("YOLO 目标检测")
 
-                    result_url = API_BASE_URL + data["yolo_image_url"]
+                    result_url = IMAGE_BASE_URL + data["yolo_image_url"]
+                    st.write("YOLO 图片地址：", result_url)
 
                     st.image(
                         result_url,
@@ -76,11 +79,24 @@ if uploaded_file is not None:
                     else:
                         st.info("没有检测到目标。")
 
-                with right:
+                with col2:
+                    st.subheader("SAM 目标分割")
+
+                    sam_url = IMAGE_BASE_URL + data["sam_image_url"]
+                    st.write("SAM 图片地址：", sam_url)
+
+                    st.image(
+                        sam_url,
+                        caption="SAM 分割结果",
+                        use_container_width=True
+                    )
+
+                with col3:
                     st.subheader("多模态大模型分析")
                     st.write(data.get("description", "没有返回描述。"))
 
                 st.success("分析完成！")
+
 
             except requests.RequestException as exc:
                 st.error(f"后端连接失败或请求超时：{exc}")
