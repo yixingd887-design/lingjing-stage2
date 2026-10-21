@@ -8,7 +8,13 @@ import uuid
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse
-from database import save_analysis, get_recent_analyses
+from database import (
+    init_db,
+    save_analysis,
+    get_recent_analyses,
+    update_analysis,
+    delete_analysis,
+)
 
 # 项目根目录
 PROJECT_DIR = Path(__file__).resolve().parent.parent
@@ -31,6 +37,12 @@ SAM_MODEL_PATH = PROJECT_DIR / "models" / "sam_b.pt"
 sam_model = SAM(str(SAM_MODEL_PATH))
 
 app = FastAPI(title="灵境 AI 图像分析系统")
+
+
+@app.on_event("startup")
+def startup_event():
+    init_db()
+
 
 ALLOWED_TYPES = {"image/jpeg", "image/png", "image/webp"}
 
@@ -209,6 +221,41 @@ def get_history(limit: int = 20):
         })
 
     return history
+
+
+@app.put("/history/{record_id}")
+def update_history(
+    record_id: int,
+    yolo_result: str | None = None,
+    vision_result: str | None = None,
+):
+    success = update_analysis(
+        record_id,
+        yolo_result=yolo_result,
+        vision_result=vision_result,
+    )
+
+    if not success:
+        raise HTTPException(
+            status_code=404,
+            detail="历史记录不存在",
+        )
+
+    return {"message": "历史记录更新成功", "id": record_id}
+
+
+@app.delete("/history/{record_id}")
+def delete_history(record_id: int):
+    success = delete_analysis(record_id)
+
+    if not success:
+        raise HTTPException(
+            status_code=404,
+            detail="历史记录不存在",
+        )
+
+    return {"message": "历史记录删除成功", "id": record_id}
+
 
 @app.get("/upload/{filename}")
 def get_upload(filename: str):

@@ -68,3 +68,51 @@ def get_recent_analyses(limit=20):
         )
     finally:
         db.close()
+
+
+
+def update_analysis(record_id, yolo_result=None, vision_result=None):
+    """更新指定分析记录的结果。"""
+    db = SessionLocal()
+    try:
+        record = db.query(AnalysisRecord).filter(
+            AnalysisRecord.id == record_id
+        ).first()
+
+        if record is None:
+            return False
+
+        if yolo_result is not None:
+            record.yolo_result = yolo_result
+
+        if vision_result is not None:
+            record.vision_result = vision_result
+
+        db.commit()
+        return True
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
+
+def delete_analysis(record_id):
+    """删除指定分析记录。"""
+    db = SessionLocal()
+    try:
+        record = db.query(AnalysisRecord).filter(
+            AnalysisRecord.id == record_id
+        ).first()
+
+        if record is None:
+            return False
+
+        db.delete(record)
+        db.commit()
+        return True
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
