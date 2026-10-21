@@ -1,4 +1,5 @@
-
+from PIL import Image
+from io import BytesIO
 import sys
 from pathlib import Path
 import shutil
@@ -64,6 +65,16 @@ async def analyze(file: UploadFile = File(...)):
 
         if len(content) > 10 * 1024 * 1024:
             raise HTTPException(status_code=413, detail="图片不能超过 10 MB")
+
+        # 验证文件内容是否为有效图片
+        try:
+            with Image.open(BytesIO(content)) as img:
+                img.verify()
+        except Exception:
+            raise HTTPException(
+                status_code=400,
+                detail="文件内容不是有效的图片"
+            )
 
         image_path.write_bytes(content)
 
