@@ -19,3 +19,14 @@ tree.txt
 web_app/uploads/
 web_app/results/
 web_app/__pycache__/
+# Local database and backups
+data/*.db
+data/*.db-*
+*.db-journal
+
+# Large SAM model weight; obtain separately as documented in README
+models/sam_b.pt
+
+# Temporary dependency backups
+requirements.txt.restore
+requirements.txt.utf16.bak

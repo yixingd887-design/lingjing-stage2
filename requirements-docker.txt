@@ -7,3 +7,4 @@ python-dotenv==1.2.4
 openai==3.31.0
 opencv-python==4.11.0.86
 ultralytics==8.4.177
+SQLAlchemy

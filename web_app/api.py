@@ -8,6 +8,7 @@ import uuid
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse
+from database import save_analysis, get_recent_analyses
 
 # 项目根目录
 PROJECT_DIR = Path(__file__).resolve().parent.parent
@@ -128,10 +129,19 @@ async def analyze(file: UploadFile = File(...)):
 
         sam_output_path = await run_in_threadpool(run_sam)
 
+
         # 多模态大模型分析
         description = await run_in_threadpool(analyze_image, str(image_path))
 
-        
+        # 保存分析记录到数据库
+        await run_in_threadpool(
+            save_analysis,
+            file.filename or image_path.name,
+            image_path.stem,
+            str(detections),
+            str(description)
+        )
+
         return {
             "filename": file.filename,
             "detections": detections,
@@ -139,6 +149,7 @@ async def analyze(file: UploadFile = File(...)):
             "yolo_image_url": f"/result/{output_path.name}",
             "sam_image_url": f"/result/{sam_output_path.name}"
         }
+
 
 
     except HTTPException:
@@ -151,6 +162,86 @@ async def analyze(file: UploadFile = File(...)):
     finally:
         await file.close()
 
+
+@app.get("/history")
+def get_history(limit: int = 20):
+    if limit < 1 or limit > 100:
+        raise HTTPException(
+            status_code=400,
+            detail="limit 必须在 1 到 100 之间"
+        )
+
+    records = get_recent_analyses(limit)
+    history = []
+
+    for record in records:
+        image_id = record.image_id
+
+        # 查找原始上传图片
+        original_url = None
+        if image_id:
+            for path in UPLOAD_DIR.glob(f"{image_id}.*"):
+                if path.is_file():
+                    original_url = f"/upload/{path.name}"
+                    break
+
+        # YOLO 检测图和 SAM 分割图
+        yolo_path = RESULT_DIR / f"{image_id}_yolo.jpg" if image_id else None
+        sam_path = RESULT_DIR / f"{image_id}_sam.jpg" if image_id else None
+
+        history.append({
+            "id": record.id,
+            "image_name": record.image_name,
+            "created_at": record.created_at.isoformat(),
+            "yolo_result": record.yolo_result,
+            "vision_result": record.vision_result,
+            "original_image_url": original_url,
+            "yolo_image_url": (
+                f"/result/{yolo_path.name}"
+                if yolo_path and yolo_path.is_file()
+                else None
+            ),
+            "sam_image_url": (
+                f"/result/{sam_path.name}"
+                if sam_path and sam_path.is_file()
+                else None
+            )
+        })
+
+    return history
+
+@app.get("/upload/{filename}")
+def get_upload(filename: str):
+    # 只允许访问文件名，防止路径穿越
+    if Path(filename).name != filename:
+        raise HTTPException(
+            status_code=400,
+            detail="文件名不合法"
+        )
+
+    path = UPLOAD_DIR / filename
+
+    if not path.is_file():
+        raise HTTPException(
+            status_code=404,
+            detail="原始图片不存在"
+        )
+
+    media_types = {
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".png": "image/png",
+        ".webp": "image/webp"
+    }
+
+    media_type = media_types.get(path.suffix.lower())
+    if media_type is None:
+        raise HTTPException(
+            status_code=400,
+            detail="不支持的图片格式"
+        )
+
+    return FileResponse(path, media_type=media_type)
 
 @app.get("/result/{filename}")
 def get_result(filename: str):

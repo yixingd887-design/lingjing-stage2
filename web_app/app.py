@@ -9,6 +9,7 @@ import os
 API_BASE_URL = os.getenv("API_URL", "http://127.0.0.1:8000").rstrip("/")
 IMAGE_BASE_URL = "http://localhost:8000"
 API_URL = API_BASE_URL + "/analyze"
+HISTORY_URL = API_BASE_URL + "/history"
 PROJECT_DIR = Path(__file__).resolve().parent.parent
 
 st.set_page_config(
@@ -102,3 +103,73 @@ if uploaded_file is not None:
                 st.error(f"后端连接失败或请求超时：{exc}")
             except (ValueError, KeyError) as exc:
                 st.error(f"返回结果格式异常：{exc}")
+st.divider()
+st.header("历史分析记录")
+
+if st.button("刷新历史记录"):
+    st.rerun()
+
+try:
+    response = requests.get(HISTORY_URL, timeout=10)
+    response.raise_for_status()
+    history_records = response.json()
+
+    if history_records:
+        st.write(f"共找到 {len(history_records)} 条历史记录")
+
+        for record in history_records:
+            title = (
+                f"记录 #{record['id']} - "
+                f"{record['image_name']} - "
+                f"{record['created_at']}"
+            )
+
+            with st.expander(title):
+                # 展示原图、YOLO 检测图和 SAM 分割图
+                col1, col2, col3 = st.columns(3)
+
+                with col1:
+                    st.subheader("原始图片")
+                    original_url = record.get("original_image_url")
+                    if original_url:
+                        st.image(
+                            IMAGE_BASE_URL + original_url,
+                            use_container_width=True
+                        )
+                    else:
+                        st.info("暂无原图地址，请检查是否为旧记录。")
+
+                with col2:
+                    st.subheader("YOLO 检测图")
+                    yolo_url = record.get("yolo_image_url")
+                    if yolo_url:
+                        st.image(
+                            IMAGE_BASE_URL + yolo_url,
+                            use_container_width=True
+                        )
+                    else:
+                        st.info("暂无 YOLO 图片。")
+
+                with col3:
+                    st.subheader("SAM 分割图")
+                    sam_url = record.get("sam_image_url")
+                    if sam_url:
+                        st.image(
+                            IMAGE_BASE_URL + sam_url,
+                            use_container_width=True
+                        )
+                    else:
+                        st.info("暂无 SAM 图片。")
+
+                st.subheader("YOLO 文字检测结果")
+                st.code(record.get("yolo_result") or "暂无结果")
+
+                st.subheader("多模态大模型分析结果")
+                st.write(record.get("vision_result") or "暂无结果")
+    else:
+        st.info("暂时没有历史分析记录。")
+
+except requests.RequestException as exc:
+    st.error(f"读取历史记录失败：{exc}")
+except (ValueError, KeyError, TypeError) as exc:
+    st.error(f"历史记录格式异常：{exc}")
