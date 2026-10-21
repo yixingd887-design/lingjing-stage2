@@ -186,12 +186,22 @@ DASHSCOPE_API_KEY=your_api_key_here
 
 ### SAM 模型文件准备
 
-项目使用的 SAM 权重文件为 `models/sam_b.pt`。首次部署前，请确保该文件已放置在项目的 `models/` 目录中。
+项目使用的 SAM 模型权重文件为 `models/sam_b.pt`，文件名必须保持一致。
 
-由于模型文件体积较大，如果仓库未包含该文件，需要按照项目使用的 Ultralytics SAM 模型权重获取方式单独下载。
+由于该文件体积较大，GitHub 仓库未直接包含此文件。首次部署前，请按以下步骤准备模型：
 
-Docker 构建时会将 `models/` 目录复制到镜像中，因此新增或更新模型文件后，需要重新构建对应镜像。
+1. 确保项目根目录下存在 `models/` 文件夹。
+2. 从 Ultralytics 官方 SAM 模型权重来源获取对应的 SAM 权重文件，并确认使用的是与当前项目兼容的 `sam_b.pt`。
+3. 将下载的文件放置在项目的 `models/` 目录下，最终路径为 `models/sam_b.pt`。
+4. 确认文件存在后，重新构建并启动 Docker 服务：
 
+   ```bash
+   docker compose up -d --build
+   ```
+
+Docker 构建时会将 `models/` 目录复制到镜像中。如果模型文件缺失或路径不正确，API 服务可能无法正常启动。
+
+如果本地已经存在 `models/sam_b.pt`，则无需重复下载。
 
 
 ### 2. 启动服务
