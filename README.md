@@ -190,10 +190,10 @@ DASHSCOPE_API_KEY=your_api_key_here
 
 由于该文件体积较大，GitHub 仓库未直接包含此文件。首次部署前，请按以下步骤准备模型：
 
-1. 确保项目根目录下存在 `models/` 文件夹。
-2. 从 Ultralytics 官方 SAM 模型权重来源获取对应的 SAM 权重文件，并确认使用的是与当前项目兼容的 `sam_b.pt`。
-3. 将下载的文件放置在项目的 `models/` 目录下，最终路径为 `models/sam_b.pt`。
-4. 确认文件存在后，重新构建并启动 Docker 服务：
+1. 阅读 [Ultralytics SAM 官方文档](https://docs.ultralytics.com/models/sam/)，了解模型及其权重文件。
+2. 使用 Ultralytics 提供的模型权重获取方式获取 `sam_b.pt`。如果通过程序自动下载，请确认最终文件位于项目的 `models/` 目录中。
+3. 确认模型文件路径为 `models/sam_b.pt`。
+4. 在项目根目录执行以下命令，重新构建并启动 Docker 服务：
 
    ```bash
    docker compose up -d --build
