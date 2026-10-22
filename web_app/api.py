@@ -6,10 +6,23 @@ import shutil
 import uuid
 
 from fastapi import FastAPI, UploadFile, File, HTTPException
+from datetime import datetime, timedelta, timezone
+import hashlib
+import hmac
+import os
+import secrets
+
+import jwt
+from fastapi import Depends
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from sqlalchemy.orm import Session
+
+from database import SessionLocal, User, hash_password, verify_password
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse
 from database import (
     init_db,
+    migrate_db,
     save_analysis,
     get_recent_analyses,
     update_analysis,
@@ -38,10 +51,66 @@ sam_model = SAM(str(SAM_MODEL_PATH))
 
 app = FastAPI(title="灵境 AI 图像分析系统")
 
+JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY")
+if not JWT_SECRET_KEY:
+    raise RuntimeError("缺少 JWT_SECRET_KEY 环境变量")
+
+JWT_ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = 30
+
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/login")
+
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+
+def create_access_token(username: str) -> str:
+    expire = datetime.now(timezone.utc) + timedelta(
+        minutes=ACCESS_TOKEN_EXPIRE_MINUTES
+    )
+    payload = {
+        "sub": username,
+        "exp": expire,
+    }
+    return jwt.encode(payload, JWT_SECRET_KEY, algorithm=JWT_ALGORITHM)
+
+
+def get_current_user(
+    token: str = Depends(oauth2_scheme),
+    db: Session = Depends(get_db),
+):
+    credentials_error = HTTPException(
+        status_code=401,
+        detail="登录已失效或令牌无效，请重新登录",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+
+    try:
+        payload = jwt.decode(
+            token,
+            JWT_SECRET_KEY,
+            algorithms=[JWT_ALGORITHM],
+        )
+        username = payload.get("sub")
+        if not isinstance(username, str) or not username:
+            raise credentials_error
+    except jwt.InvalidTokenError:
+        raise credentials_error
+
+    user = db.query(User).filter(User.username == username).first()
+    if user is None:
+        raise credentials_error
+
+    return user
 
 @app.on_event("startup")
 def startup_event():
     init_db()
+    migrate_db()
 
 
 ALLOWED_TYPES = {"image/jpeg", "image/png", "image/webp"}
@@ -51,9 +120,88 @@ ALLOWED_TYPES = {"image/jpeg", "image/png", "image/webp"}
 def home():
     return {"message": "灵境 AI 图像分析后端运行正常"}
 
+@app.post("/register", status_code=201)
+def register(
+    form_data: OAuth2PasswordRequestForm = Depends(),
+    db: Session = Depends(get_db),
+):
+    username = form_data.username.strip()
+    password = form_data.password
+
+    if len(username) < 3 or len(username) > 50:
+        raise HTTPException(
+            status_code=400,
+            detail="用户名长度必须为 3 到 50 个字符",
+        )
+
+    if len(password) < 8:
+        raise HTTPException(
+            status_code=400,
+            detail="密码长度至少为 8 个字符",
+        )
+
+    existing_user = db.query(User).filter(
+        User.username == username
+    ).first()
+
+    if existing_user:
+        raise HTTPException(
+            status_code=409,
+            detail="用户名已存在",
+        )
+
+    user = User(
+        username=username,
+        hashed_password=hash_password(password),
+    )
+    db.add(user)
+
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail="注册失败，请稍后重试",
+        )
+
+    return {"message": "注册成功", "username": username}
+
+
+@app.post("/login")
+def login(
+    form_data: OAuth2PasswordRequestForm = Depends(),
+    db: Session = Depends(get_db),
+):
+    username = form_data.username.strip()
+
+    user = db.query(User).filter(
+        User.username == username
+    ).first()
+
+    if user is None or not verify_password(
+        form_data.password,
+        user.hashed_password,
+    ):
+        raise HTTPException(
+            status_code=401,
+            detail="用户名或密码错误",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    access_token = create_access_token(user.username)
+
+    return {
+        "access_token": access_token,
+        "token_type": "bearer",
+        "expires_in": ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+    }
 
 @app.post("/analyze")
-async def analyze(file: UploadFile = File(...)):
+async def analyze(
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+):
     if file.content_type not in ALLOWED_TYPES:
         raise HTTPException(
             status_code=400,
@@ -91,7 +239,7 @@ async def analyze(file: UploadFile = File(...)):
 
         image_path.write_bytes(content)
 
-       
+
         # YOLO 检测
         def run_yolo():
             results = model(str(image_path), device=DEVICE, verbose=False)
@@ -145,14 +293,17 @@ async def analyze(file: UploadFile = File(...)):
         # 多模态大模型分析
         description = await run_in_threadpool(analyze_image, str(image_path))
 
+
         # 保存分析记录到数据库
         await run_in_threadpool(
             save_analysis,
             file.filename or image_path.name,
             image_path.stem,
             str(detections),
-            str(description)
+            str(description),
+            current_user.id
         )
+
 
         return {
             "filename": file.filename,
@@ -176,14 +327,17 @@ async def analyze(file: UploadFile = File(...)):
 
 
 @app.get("/history")
-def get_history(limit: int = 20):
+def get_history(
+    limit: int = 20,
+    current_user: User = Depends(get_current_user),
+):
     if limit < 1 or limit > 100:
         raise HTTPException(
             status_code=400,
             detail="limit 必须在 1 到 100 之间"
         )
 
-    records = get_recent_analyses(limit)
+    records = get_recent_analyses(limit, user_id=current_user.id)
     history = []
 
     for record in records:
@@ -228,12 +382,17 @@ def update_history(
     record_id: int,
     yolo_result: str | None = None,
     vision_result: str | None = None,
+    current_user: User = Depends(get_current_user),
 ):
+
+
     success = update_analysis(
-        record_id,
-        yolo_result=yolo_result,
-        vision_result=vision_result,
-    )
+    record_id,
+    user_id=current_user.id,
+    yolo_result=yolo_result,
+    vision_result=vision_result,
+)
+
 
     if not success:
         raise HTTPException(
@@ -244,9 +403,17 @@ def update_history(
     return {"message": "历史记录更新成功", "id": record_id}
 
 
+
 @app.delete("/history/{record_id}")
-def delete_history(record_id: int):
-    success = delete_analysis(record_id)
+def delete_history(
+    record_id: int,
+    current_user: User = Depends(get_current_user),
+):
+
+    success = delete_analysis(
+    record_id,
+    user_id=current_user.id,
+)
 
     if not success:
         raise HTTPException(
