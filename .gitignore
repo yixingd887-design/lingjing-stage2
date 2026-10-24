@@ -30,3 +30,8 @@ models/sam_b.pt
 # Temporary dependency backups
 requirements.txt.restore
 requirements.txt.utf16.bak
+
+# Local temporary backups
+web_app/app.py.async-backup
+web_app/app.py.bak
+web_app/task_worker.py.bak
