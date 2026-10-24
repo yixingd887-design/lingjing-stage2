@@ -13,7 +13,7 @@ RUN pip install --upgrade pip && \
 
 COPY requirements-docker.txt .
 
-RUN pip install -r requirements-docker.txt
+RUN pip install -r requirements-docker.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
 
 COPY src/ ./src/
 COPY web_app/ ./web_app/

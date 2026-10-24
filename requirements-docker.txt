@@ -9,3 +9,4 @@ opencv-python==4.11.0.86
 ultralytics==8.4.177
 PyJWT==2.10.1
 SQLAlchemy
+redis

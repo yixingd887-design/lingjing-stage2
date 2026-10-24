@@ -1,4 +1,5 @@
-﻿services:
+﻿
+services:
   api:
     build:
       context: .
@@ -12,17 +13,51 @@
       - ./web_app/uploads:/app/web_app/uploads
       - ./web_app/results:/app/web_app/results
       - ./data:/app/data
+      - ./web_app:/app/web_app
+    restart: unless-stopped
 
-  
   frontend:
     build:
       context: .
       dockerfile: Dockerfile
-    command: streamlit run /app/web_app/app.py --server.address 0.0.0.0 --server.port 8501
+    command: streamlit run /app/web_app/app.py --server.address 0.0.0.0 --server.port 8501 --server.enableCORS false
     environment:
       API_URL: http://api:8000
     ports:
       - "8501:8501"
     depends_on:
       - api
+    restart: unless-stopped
 
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "8080:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - api
+      - frontend
+    restart: unless-stopped
+
+
+  redis:
+    image: redis:alpine
+    restart: unless-stopped
+
+  worker:
+    image: lingjing-stage2-api
+    command: sh -c "pip install redis && python /app/web_app/task_worker.py"
+    env_file:
+      - .env
+    volumes:
+      - ./web_app/uploads:/app/web_app/uploads
+      - ./web_app/results:/app/web_app/results
+      - ./data:/app/data
+      - ./web_app/task_queue.py:/app/web_app/task_queue.py:ro
+      - ./web_app/task_worker.py:/app/web_app/task_worker.py:ro
+    environment:
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      - redis
+    restart: unless-stopped

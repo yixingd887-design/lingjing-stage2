@@ -28,6 +28,7 @@ from database import (
     update_analysis,
     delete_analysis,
 )
+from task_queue import get_task, submit_task
 
 # 项目根目录
 PROJECT_DIR = Path(__file__).resolve().parent.parent
@@ -325,6 +326,80 @@ async def analyze(
     finally:
         await file.close()
 
+@app.post("/tasks", status_code=202)
+async def create_task(
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+):
+    # 1. 检查图片 MIME 类型
+    if file.content_type not in ALLOWED_TYPES:
+        raise HTTPException(
+            status_code=400,
+            detail="请上传 JPG、PNG 或 WebP 图片",
+        )
+
+    # 2. 检查文件扩展名
+    suffix = Path(file.filename or "").suffix.lower()
+    if suffix not in {".jpg", ".jpeg", ".png", ".webp"}:
+        raise HTTPException(
+            status_code=400,
+            detail="图片文件扩展名不正确",
+        )
+
+    image_path = UPLOAD_DIR / f"{uuid.uuid4().hex}{suffix}"
+
+    try:
+        # 3. 读取并检查图片
+        content = await file.read()
+
+        if not content:
+            raise HTTPException(
+                status_code=400,
+                detail="上传的图片为空",
+            )
+
+        if len(content) > 10 * 1024 * 1024:
+            raise HTTPException(
+                status_code=413,
+                detail="图片不能超过 10 MB",
+            )
+
+        try:
+            with Image.open(BytesIO(content)) as img:
+                img.verify()
+        except Exception:
+            raise HTTPException(
+                status_code=400,
+                detail="文件内容不是有效的图片",
+            )
+
+        # 4. 保存图片
+        image_path.write_bytes(content)
+
+        # 5. 将任务提交到 Redis 队列
+        task_id = submit_task({
+            "image_path": str(image_path),
+            "image_name": file.filename or image_path.name,
+            "user_id": current_user.id,
+        })
+
+        return {
+            "task_id": task_id,
+            "status": "pending",
+            "message": "任务已提交",
+        }
+
+    except HTTPException:
+        raise
+    except Exception as exc:
+        # 提交失败时清理本次上传的文件
+        image_path.unlink(missing_ok=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"任务提交失败：{type(exc).__name__}: {exc}",
+        )
+    finally:
+        await file.close()
 
 @app.get("/history")
 def get_history(
@@ -375,6 +450,35 @@ def get_history(
         })
 
     return history
+
+
+@app.get("/tasks/{task_id}")
+def query_task(
+    task_id: str,
+    current_user: User = Depends(get_current_user),
+):
+    task = get_task(task_id)
+
+    if task is None:
+        raise HTTPException(
+            status_code=404,
+            detail="任务不存在",
+        )
+
+    result = {
+        "task_id": task_id,
+        "status": task.get("status"),
+        "data": task.get("data"),
+    }
+
+    if task.get("result"):
+        import json
+        result["result"] = json.loads(task["result"])
+
+    if task.get("error"):
+        result["error"] = task["error"]
+
+    return result
 
 
 @app.put("/history/{record_id}")

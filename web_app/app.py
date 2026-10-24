@@ -5,10 +5,12 @@ import requests
 import streamlit as st
 
 import os
+import time
 
 API_BASE_URL = os.getenv("API_URL", "http://127.0.0.1:8000").rstrip("/")
 IMAGE_BASE_URL = "http://localhost:8000"
 API_URL = API_BASE_URL + "/analyze"
+TASKS_URL = API_BASE_URL + "/tasks"
 HISTORY_URL = API_BASE_URL + "/history"
 PROJECT_DIR = Path(__file__).resolve().parent.parent
 
@@ -178,27 +180,70 @@ if uploaded_file is not None:
     )
 
     if st.button("开始 AI 分析", type="primary"):
-        with st.spinner("正在调用 AI 模型，请稍候……"):
+        with st.spinner("正在提交分析任务……"):
             try:
-                uploaded_file.seek(0)
-
                 response = requests.post(
-    API_URL,
-    headers={
-        "Authorization": f"Bearer {st.session_state.access_token}"
-    },
-    files={
-        "file": (
-            uploaded_file.name,
-            uploaded_file.getvalue(),
-            uploaded_file.type
-        )
-    },
-    timeout=300
-)
-
+                    TASKS_URL,
+                    headers={
+                        "Authorization": f"Bearer {st.session_state.access_token}"
+                    },
+                    files={
+                        "file": (
+                            uploaded_file.name,
+                            uploaded_file.getvalue(),
+                            uploaded_file.type
+                        )
+                    },
+                    timeout=30
+                )
                 response.raise_for_status()
-                data = response.json()
+                task_data = response.json()
+                task_id = str(task_data["task_id"])
+
+                progress = st.progress(0)
+                status_text = st.empty()
+                deadline = time.time() + 600
+                data = None
+
+                while time.time() < deadline:
+                    task_response = requests.get(
+                        f"{TASKS_URL}/{task_id}",
+                        headers={
+                            "Authorization": f"Bearer {st.session_state.access_token}"
+                        },
+                        timeout=15
+                    )
+                    task_response.raise_for_status()
+                    task_info = task_response.json()
+                    status = task_info.get("status")
+
+                    if status == "completed":
+                        data = task_info.get("result")
+                        if not isinstance(data, dict):
+                            raise ValueError("任务已完成，但没有获取到有效的分析结果。")
+                        progress.progress(100)
+                        status_text.success("分析完成！")
+                        break
+
+                    if status == "failed":
+                        raise RuntimeError(
+                            task_info.get("error", "后台分析任务失败。")
+                        )
+
+                    if status == "pending":
+                        status_text.info("任务正在排队，等待 Worker 处理……")
+                        progress.progress(10)
+                    elif status == "processing":
+                        status_text.info("AI 正在分析图片，请耐心等待……")
+                        progress.progress(50)
+                    else:
+                        status_text.info(f"任务状态：{status}")
+
+                    time.sleep(2)
+                else:
+                    raise TimeoutError("等待分析结果超过 10 分钟，请刷新历史记录确认任务是否完成。")
+
+
 
 
                 col1, col2, col3 = st.columns(3)
@@ -250,6 +295,8 @@ if uploaded_file is not None:
                 st.error(f"后端连接失败或请求超时：{exc}")
             except (ValueError, KeyError) as exc:
                 st.error(f"返回结果格式异常：{exc}")
+            except (RuntimeError, TimeoutError) as exc:
+                st.error(f"分析任务未能正常完成：{exc}")
 st.divider()
 st.header("历史分析记录")
 
@@ -319,6 +366,57 @@ try:
 
                 st.subheader("多模态大模型分析结果")
                 st.write(record.get("vision_result") or "暂无结果")
+
+                with st.expander("编辑分析结果", key=f"edit_area_{record['id']}"):
+                    edited_yolo = st.text_area(
+                        "YOLO 文字检测结果",
+                        value=record.get("yolo_result") or "",
+                        key=f"edit_yolo_{record['id']}",
+                    )
+
+                    edited_vision = st.text_area(
+                        "多模态大模型分析结果",
+                        value=record.get("vision_result") or "",
+                        key=f"edit_vision_{record['id']}",
+                    )
+
+                    if st.button("保存修改", key=f"save_{record['id']}"):
+                        try:
+                            update_response = requests.put(
+                                f"{API_BASE_URL}/history/{record['id']}",
+                                headers={
+                                    "Authorization": (
+                                        f"Bearer {st.session_state.access_token}"
+                                    )
+                                },
+                                params={
+                                    "yolo_result": edited_yolo,
+                                    "vision_result": edited_vision,
+                                },
+                                timeout=10,
+                            )
+                            update_response.raise_for_status()
+                            st.success("历史记录修改成功")
+                            st.rerun()
+                        except requests.RequestException as exc:
+                            st.error(f"修改历史记录失败：{exc}")
+
+                if st.button("删除这条记录", key=f"delete_{record['id']}"):
+                    try:
+                        delete_response = requests.delete(
+                            f"{API_BASE_URL}/history/{record['id']}",
+                            headers={
+                                "Authorization": (
+                                    f"Bearer {st.session_state.access_token}"
+                                )
+                            },
+                            timeout=10,
+                        )
+                        delete_response.raise_for_status()
+                        st.success("历史记录删除成功")
+                        st.rerun()
+                    except requests.RequestException as exc:
+                        st.error(f"删除历史记录失败：{exc}")
     else:
         st.info("暂时没有历史分析记录。")
 
