@@ -254,3 +254,92 @@ docker compose down
 ```
 
 说明：Docker 镜像使用 CPU 版 PyTorch，容器内推理默认使用 CPU。Windows 本地运行方式仍可使用原有 GPU 环境。
+---
+
+## 第二阶段：Web 系统与后端服务
+
+在原有 YOLO 目标检测、SAM 目标分割和视觉大模型分析功能的基础上，项目进一步实现了可交互的 Web 应用与后端服务。
+
+### 1. 用户注册与登录
+
+- 使用 Streamlit 构建登录、注册界面。
+- 后端通过 FastAPI 提供注册和登录接口。
+- 使用 JWT Bearer Token 进行身份认证。
+- 用户登录后可以访问受保护的业务接口。
+
+### 2. 异步图像分析
+
+- 前端提交图像分析任务后，后端返回任务标识。
+- 系统使用 Redis 作为任务队列，并由独立 Worker 处理分析任务。
+- 前端可以轮询任务状态，并在任务完成后查看分析结果。
+- 异步处理将任务提交与实际模型推理分开，改善耗时任务的交互体验。
+
+### 3. 历史记录与数据库
+
+- 使用 SQLAlchemy 管理数据库访问。
+- 使用 SQLite 保存分析历史记录。
+- 支持查询、修改和删除历史记录。
+- 历史记录与用户身份关联，业务接口遵循用户数据隔离规则。
+- Docker Compose 将宿主机的 `data/` 目录挂载到容器的 `/app/data`，用于保存数据库文件。
+
+### 4. 前后端服务与反向代理
+
+系统主要由以下服务组成：
+
+| 服务 | 作用 |
+| --- | --- |
+| Streamlit | 提供用户交互界面 |
+| FastAPI | 处理用户认证、图像分析、任务与历史记录接口 |
+| Redis | 为异步任务提供队列服务 |
+| Worker | 从队列中获取任务并执行图像分析 |
+| Nginx | 统一入口、反向代理与请求转发 |
+| SQLite | 保存用户及分析记录等数据 |
+
+### 5. 主要 API 接口
+
+| 方法 | 路径 | 功能 |
+| --- | --- | --- |
+| POST | `/register` | 用户注册 |
+| POST | `/login` | 用户登录 |
+| POST | `/analyze` | 同步图像分析 |
+| POST | `/tasks` | 提交异步分析任务 |
+| GET | `/tasks/{task_id}` | 查询任务状态 |
+| GET | `/history` | 查询历史记录 |
+| PUT | `/history/{record_id}` | 修改历史记录 |
+| DELETE | `/history/{record_id}` | 删除历史记录 |
+| GET | `/upload/{filename}` | 获取上传图片 |
+| GET | `/result/{filename}` | 获取分析结果图片 |
+
+需要身份认证的接口应携带有效的 Bearer Token。具体参数、请求体和响应格式以当前 API 实现及 `/docs` 文档为准。
+
+### 6. Docker Compose 部署与访问
+
+在项目根目录准备好 `.env` 文件、所需模型权重和 Docker 环境后，启动服务：
+
+启动服务：`docker compose up -d --build`
+
+查看服务状态：`docker compose ps`
+
+查看 API 和 Worker 日志：`docker compose logs --tail=50 api worker`
+
+推荐通过 Nginx 统一入口访问系统：
+
+- Web 前端：`http://localhost:8080`
+- API 文档：`http://localhost:8080/docs`
+
+也可以在本机直接访问：
+
+- Streamlit 前端：`http://localhost:8501`
+- FastAPI 文档：`http://localhost:8000/docs`
+
+### 7. 第二阶段功能验证建议
+
+1. 注册一个测试用户并登录。
+2. 上传图片，提交分析任务。
+3. 查看任务状态，确认任务完成。
+4. 检查 YOLO、SAM 和视觉大模型分析结果。
+5. 查看历史记录，确认记录能够正常展示。
+6. 修改并删除测试记录，验证对应操作。
+7. 使用未登录状态访问受保护接口，确认系统拒绝未授权请求。
+8. 检查 Docker 服务状态与 API、Worker 日志。
+
